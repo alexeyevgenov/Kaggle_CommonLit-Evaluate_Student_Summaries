@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import time
 
 
-TEST_MODE = True
+TEST_MODE = False
 
 
 def data_preparation() -> None:
@@ -43,23 +43,16 @@ def data_preparation() -> None:
             chunks_copy = chunks.copy()
             chunks_copy = chunks_copy[:-2]
             chunks_copy.append(pd.concat(chunks[-2:]))
-            chunks = [el.reset_index(drop=True) for el in chunks_copy]
+            chunks = chunks_copy
             del chunks_copy
-
-        # pool = Pool()
-        # results = pool.map(data_preprocessor.run_pandas, chunks)
-        # df_processed = pd.concat(results)
-        # df_processed.to_feather(CONFIG.storage + f"/preprocessed fold {i}.ftr")
+        chunks = [el.reset_index(drop=True) for el in chunks.copy()]
 
         processes = []
         queues = []
         for chunk in chunks:
             queue = Queue()
             queues.append(queue)
-            try:
-                p = Process(target=data_preprocessor.run_pandas, args=(chunk, queue))
-            except Exception as ex:
-                print(f"Error in process. {ex}")
+            p = Process(target=data_preprocessor.run_pandas, args=(chunk, queue))
             processes.append(p)
             p.start()
 
