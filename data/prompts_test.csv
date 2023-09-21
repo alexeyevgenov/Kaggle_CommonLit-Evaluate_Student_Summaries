@@ -1,5 +1,3 @@
-prompt_id,prompt_question,prompt_title,prompt_text
-abc123,Summarize...,Example Title 1,"Heading
-Text..."
-def789,Summarize...,Example Title 2,"Heading
-Text..."
+version https://git-lfs.github.com/spec/v1
+oid sha256:fdc396ca3171decc00930df91f28dec2d11eb0e96720a7ecf3ff4f3d205b6ab3
+size 159

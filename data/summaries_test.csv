@@ -1,5 +1,3 @@
-student_id,prompt_id,text
-000000ffffff,abc123,Example text 1
-111111eeeeee,def789,Example text 2
-222222cccccc,abc123,Example text 3
-333333dddddd,def789,Example text 4
+version https://git-lfs.github.com/spec/v1
+oid sha256:114019e4f6efdf4281644f5ec2973f31d1bfa8065e67de9045add014ca4e6311
+size 166
