@@ -2,11 +2,14 @@ import os
 import optuna
 import numpy as np
 from sklearn.metrics import mean_squared_error
+from sklearn.svm import SVR
+import wandb
 from config import CONFIG
-import lightgbm as lgb
 from feature_generation.data_processing_unit import normalize_data, split_data_on_train_test
 import pickle as pkl
 import pandas as pd
+
+# wandb.login(key="76ca0651b6bb46110bedfc5f63923880b9ee2507")
 
 
 class Study:
@@ -21,7 +24,7 @@ class Study:
 
         storage_for_db = os.path.join(CONFIG.db_dir, CONFIG.version)
         os.makedirs(storage_for_db, exist_ok=True)
-        storage = optuna.storages.RDBStorage(url=f"sqlite:///{os.path.join(storage_for_db, f'lgbm_{self.target}.db')}")
+        storage = optuna.storages.RDBStorage(url=f"sqlite:///{os.path.join(storage_for_db, f'svr_{self.target}.db')}")
 
         self.study = optuna.create_study(direction='minimize',
                                          study_name=CONFIG.version,
@@ -37,24 +40,21 @@ class Study:
 
             # store scaler model
             if self.target == CONFIG.data.targets[0]:
+                os.makedirs(self.path_for_models_storage, exist_ok=True)
                 pkl.dump(
                     scaler, open(f"{self.path_for_models_storage}/scaler_{fold}.pkl", "wb"))
 
         return df_by_folds
 
     def _objective(self, trial):
-        CONFIG.lgbm.n_estimators = trial.suggest_int('n_estimators', 100, 500)
-        CONFIG.lgbm.learning_rate = trial.suggest_float('learning_rate', 0.001, 0.1)
-        CONFIG.lgbm.max_depth = trial.suggest_int('max_depth', 2, 5)
-        CONFIG.lgbm.num_leaves = trial.suggest_int('num_leaves', 2, 5)
-        CONFIG.lgbm.reg_alpha = trial.suggest_float('reg_alpha', 0.0, 10.0)
-        CONFIG.lgbm.reg_lambda = trial.suggest_float('reg_lambda', 0.0, 10.0)
-        CONFIG.lgbm.min_child_samples = trial.suggest_int('min_child_samples', 0.0, 10.0)
+        CONFIG.svr.C = trial.suggest_float('C', 0.01, 1000)
+        CONFIG.svr.epsilon = trial.suggest_float('epsilon', 0.01, 0.1)
+        CONFIG.svr.gamma = trial.suggest_float('gamma', 0.001, 10)
 
         rmses = []
         for fold in range(CONFIG.num_folds):
             X_train, X_eval, y_train, y_eval = self.df_by_folds[fold]
-            model = lgb.LGBMRegressor(**CONFIG.lgbm)
+            model = SVR(**CONFIG.svr)
             model.fit(X_train, y_train)
             y_pred = model.predict(X_eval)
 
@@ -69,20 +69,16 @@ class Study:
         self.study.optimize(self._objective, n_trials=n_trials)
 
     def train_best_model(self) -> None:
-        CONFIG.lgbm.n_estimators = self.study.best_params["n_estimators"]
-        CONFIG.lgbm.learning_rate = self.study.best_params["learning_rate"]
-        CONFIG.lgbm.max_depth = self.study.best_params["max_depth"]
-        CONFIG.lgbm.num_leaves = self.study.best_params["num_leaves"]
-        CONFIG.lgbm.reg_alpha = self.study.best_params["reg_alpha"]
-        CONFIG.lgbm.reg_lambda = self.study.best_params["reg_lambda"]
-        CONFIG.lgbm.min_child_samples = self.study.best_params["min_child_samples"]
+        CONFIG.svr.C = self.study.best_params["C"]
+        CONFIG.svr.epsilon = self.study.best_params["epsilon"]
+        CONFIG.svr.gamma = self.study.best_params["gamma"]
 
         rmses = []
         models = {}
         for fold in range(CONFIG.num_folds):
             X_train, X_eval, y_train, y_eval = self.df_by_folds[fold]
 
-            model = lgb.LGBMRegressor(**CONFIG.lgbm)
+            model = SVR(**CONFIG.svr)
             model.fit(X_train, y_train)
             y_pred = model.predict(X_eval)
 
@@ -93,11 +89,11 @@ class Study:
 
         for ind in range(CONFIG.num_folds):
             pkl.dump(
-                models[ind], open(f"{self.path_for_models_storage}/lgbm_model_{self.target}_{ind}.pkl", "wb")
+                models[ind], open(f"{self.path_for_models_storage}/svr_model_{self.target}_{ind}.pkl", "wb")
                      )
         for ind, rmse in enumerate(rmses):
             print(f"RMSE for target '{self.target}' of model {ind} is {rmse}")
 
         pd.DataFrame(data=[rmses],
                      columns=[f"rmse_{i}" for i in range(CONFIG.num_folds)],
-                     ).to_csv(f"{self.path_for_models_storage}/LGBM_rmses_{self.target}.csv", index=False)
+                     ).to_csv(f"{self.path_for_models_storage}/SVR_rmses_{self.target}.csv", index=False)

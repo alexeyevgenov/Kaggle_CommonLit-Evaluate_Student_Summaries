@@ -1,7 +1,7 @@
 from box import Box
 
-CONFIG = {"storage": "../feature generation/results/1",
-          "version": "1",
+CONFIG = {"storage": "../feature_generation/results/2",
+          "version": "2",
           "n_trials": 100,
           'models_dir': 'models',
           'db_dir': 'DB',
@@ -18,6 +18,12 @@ CONFIG = {"storage": "../feature generation/results/1",
                    'min_child_samples': 20,
                    'random_state': 42,
                    },
+          "svr": {'kernel': 'rbf',
+                  'C': 1.0,
+                  'epsilon': 0.1,
+                  'gamma': 'scale',
+                  },
+          "ridge": {'alpha': 1.0},
           "data": {"targets": ["content", "wording"],
                    },
           }

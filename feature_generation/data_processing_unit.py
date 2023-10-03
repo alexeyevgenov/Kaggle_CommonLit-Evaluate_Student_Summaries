@@ -919,14 +919,14 @@ class Preprocessor:
         return input_df.drop(columns=["summary_tokens", "prompt_tokens"])
 
 
-def group_folds_in_a_single_df() -> pd.DataFrame:
+def group_folds_in_a_single_df(path: str, num_folds: int) -> pd.DataFrame:
     """
     Downloads data from 'preprocessed fold xxx.ftr' with a feature engineered data +
     separately placed by columns embeddings ,
     """
     total_df = pd.DataFrame()
-    for i in range(CONFIG.num_folds):
-        fold_df = pd.read_feather(CONFIG.init_data_storage + f"/preprocessed fold {i}.ftr")
+    for i in range(num_folds):
+        fold_df = pd.read_feather(path + f"/preprocessed fold {i}.ftr")
         fold_df["fold"] = i
         if total_df.empty:
             total_df = fold_df
@@ -947,9 +947,22 @@ def split_data_on_train_test(data: pd.DataFrame, fold_nummer: int, target_name: 
 
 def normalize_data(train_df: pd.DataFrame, test_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, StandardScaler]:
     scaler = StandardScaler()
-    train_df[features_for_norm] = scaler.fit_transform(train_df[features_for_norm])
-    test_df[features_for_norm] = scaler.transform(test_df[features_for_norm])
+    # train_df[features_for_norm] = scaler.fit_transform(train_df[features_for_norm])
+    # test_df[features_for_norm] = scaler.transform(test_df[features_for_norm])
+    train_df[train_df.columns] = scaler.fit_transform(train_df)
+    test_df[test_df.columns] = scaler.transform(test_df)
     return train_df, test_df, scaler
+
+
+def remove_highly_collinear_variables(df: pd.DataFrame, collinearity_threshold: float) -> pd.DataFrame:
+    corr_matrix = df.corr(numeric_only=True).abs()
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    to_drop = [column for column in upper.columns if any(upper[column] > collinearity_threshold)]
+    to_drop = [col for col in to_drop if col not in CONFIG.data.targets]
+    print(f"There are defined {len(to_drop)} features with correlation greater than {collinearity_threshold}: {to_drop}"
+          )
+    df.drop(to_drop, axis=1, inplace=True)
+    return df
 
 
 def clean_lexile(lexile):
