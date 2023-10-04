@@ -1,4 +1,4 @@
-from data_processing_unit import Preprocessor, preprocess_and_join
+from data_processing_unit import Preprocessor, preprocess_and_join, textstat_application
 import pandas as pd
 from config import CONFIG
 from multiprocessing import Process, Queue, Pool
@@ -7,7 +7,7 @@ import time
 import os
 
 
-TEST_MODE = False
+TEST_MODE = True
 
 
 def data_preparation() -> None:
@@ -76,6 +76,7 @@ if __name__ == "__main__":
 
     start = time.time()
     # data_preparation()
+    # textstat_application(TEST_MODE)
     data_preprocessor = Preprocessor(test_mode=TEST_MODE)
     data_preprocessor.run_modin()
     duration = time.time() - start

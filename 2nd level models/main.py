@@ -35,7 +35,7 @@ def ridge_study(data: pd.DataFrame) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("model", type=str,
-                        help="model selection")
+                        help="model selection ['GBM', 'SVR', 'RIDGE']")
     arguments = parser.parse_args()
 
     all_folds_df = remove_highly_collinear_variables(group_folds_in_a_single_df(CONFIG.storage, CONFIG.num_folds),

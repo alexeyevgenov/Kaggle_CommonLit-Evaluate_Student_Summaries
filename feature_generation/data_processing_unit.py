@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 # import modin.pandas as pd
 # import swifter
-import pyphen
+# import pyphen
 import spacy
 from autocorrect import Speller
 from nltk.corpus import stopwords
@@ -25,6 +25,7 @@ from tqdm import tqdm
 from config import CONFIG
 from multiprocessing import Queue
 import multiprocessing
+import textstat
 
 tqdm.pandas()
 
@@ -166,44 +167,44 @@ class Preprocessor:
         keyword_count = sum(1 for word in text_words if word in keywords)
         return keyword_count / len(text_words)
 
-    @staticmethod
-    def count_syllables(word):
-        dic = pyphen.Pyphen(lang='en')
-        hyphenated_word = dic.inserted(word)
-        return len(hyphenated_word.split('-'))
+    # @staticmethod
+    # def count_syllables(word):
+    #     dic = pyphen.Pyphen(lang='en')
+    #     hyphenated_word = dic.inserted(word)
+    #     return len(hyphenated_word.split('-'))
 
-    def flesch_reading_ease_manual(self, text):
-        total_sentences = len(TextBlob(text).sentences)
-        total_words = len(TextBlob(text).words)
-        total_syllables = sum(self.count_syllables(word) for word in TextBlob(text).words)
+    # def flesch_reading_ease_manual(self, text):
+    #     total_sentences = len(TextBlob(text).sentences)
+    #     total_words = len(TextBlob(text).words)
+    #     total_syllables = sum(self.count_syllables(word) for word in TextBlob(text).words)
+    #
+    #     if total_sentences == 0 or total_words == 0:
+    #         return 0
+    #
+    #     flesch_score = 206.835 - 1.015 * (total_words / total_sentences) - 84.6 * (total_syllables / total_words)
+    #     return flesch_score
 
-        if total_sentences == 0 or total_words == 0:
-            return 0
+    # def flesch_kincaid_grade_level(self, text):
+    #     total_sentences = len(TextBlob(text).sentences)
+    #     total_words = len(TextBlob(text).words)
+    #     total_syllables = sum(self.count_syllables(word) for word in TextBlob(text).words)
+    #
+    #     if total_sentences == 0 or total_words == 0:
+    #         return 0
+    #
+    #     fk_grade = 0.39 * (total_words / total_sentences) + 11.8 * (total_syllables / total_words) - 15.59
+    #     return fk_grade
 
-        flesch_score = 206.835 - 1.015 * (total_words / total_sentences) - 84.6 * (total_syllables / total_words)
-        return flesch_score
-
-    def flesch_kincaid_grade_level(self, text):
-        total_sentences = len(TextBlob(text).sentences)
-        total_words = len(TextBlob(text).words)
-        total_syllables = sum(self.count_syllables(word) for word in TextBlob(text).words)
-
-        if total_sentences == 0 or total_words == 0:
-            return 0
-
-        fk_grade = 0.39 * (total_words / total_sentences) + 11.8 * (total_syllables / total_words) - 15.59
-        return fk_grade
-
-    def gunning_fog(self, text):
-        total_sentences = len(TextBlob(text).sentences)
-        total_words = len(TextBlob(text).words)
-        complex_words = sum(1 for word in TextBlob(text).words if self.count_syllables(word) > 2)
-
-        if total_sentences == 0 or total_words == 0:
-            return 0
-
-        fog_index = 0.4 * ((total_words / total_sentences) + 100 * (complex_words / total_words))
-        return fog_index
+    # def gunning_fog(self, text):
+    #     total_sentences = len(TextBlob(text).sentences)
+    #     total_words = len(TextBlob(text).words)
+    #     complex_words = sum(1 for word in TextBlob(text).words if self.count_syllables(word) > 2)
+    #
+    #     if total_sentences == 0 or total_words == 0:
+    #         return 0
+    #
+    #     fog_index = 0.4 * ((total_words / total_sentences) + 100 * (complex_words / total_words))
+    #     return fog_index
 
     @staticmethod
     def calculate_sentiment_scores(text):
@@ -211,10 +212,10 @@ class Preprocessor:
         sentiment_scores = sid.polarity_scores(text)
         return sentiment_scores
 
-    def count_difficult_words(self, text, syllable_threshold=3):
-        words = TextBlob(text).words
-        difficult_words_count = sum(1 for word in words if self.count_syllables(word) >= syllable_threshold)
-        return difficult_words_count
+    # def count_difficult_words(self, text, syllable_threshold=3):
+    #     words = TextBlob(text).words
+    #     difficult_words_count = sum(1 for word in words if self.count_syllables(word) >= syllable_threshold)
+    #     return difficult_words_count
 
     def run_swifter(self) -> None:
         import pandas as pd
@@ -530,6 +531,29 @@ class Preprocessor:
             else:
                 input_df = pd.read_feather(path=CONFIG.init_data_storage + f"/fold {i}.ftr")
 
+            # feature generation with help of textstat library
+            input_df["flesch_reading_ease"] = input_df["text"].apply(lambda x: textstat.flesch_reading_ease(x))
+            input_df["flesch_kincaid_grade"] = input_df["text"].apply(lambda x: textstat.flesch_kincaid_grade(x))
+            input_df["gunning_fog"] = input_df["text"].apply(lambda x: textstat.gunning_fog(x))
+            input_df["smog_index"] = input_df["text"].apply(lambda x: textstat.smog_index(x))
+            input_df["automated_readability_index"] = input_df["text"].apply(
+                lambda x: textstat.automated_readability_index(x))
+            input_df["coleman_liau_index"] = input_df["text"].apply(lambda x: textstat.coleman_liau_index(x))
+            input_df["linsear_write_formula"] = input_df["text"].apply(lambda x: textstat.linsear_write_formula(x))
+            input_df["dale_chall_readability_score"] = input_df["text"].apply(
+                lambda x: textstat.dale_chall_readability_score(x))
+            input_df["text_standard"] = input_df["text"].apply(lambda x: textstat.text_standard(x, float_output=False))
+            input_df["spache_readability"] = input_df["text"].apply(lambda x: textstat.spache_readability(x))
+            input_df["mcalpine_eflaw"] = input_df["text"].apply(lambda x: textstat.mcalpine_eflaw(x))
+            input_df["reading_time"] = input_df["text"].apply(lambda x: textstat.reading_time(x, ms_per_char=14.69))
+            input_df["syllable_count"] = input_df["text"].apply(lambda x: textstat.syllable_count(x))
+            input_df["lexicon_count"] = input_df["text"].apply(lambda x: textstat.lexicon_count(x, removepunct=True))
+            input_df["sentence_count"] = input_df["text"].apply(lambda x: textstat.sentence_count(x))
+            input_df["char_count"] = input_df["text"].apply(lambda x: textstat.char_count(x, ignore_spaces=True))
+            input_df["letter_count"] = input_df["text"].apply(lambda x: textstat.letter_count(x, ignore_spaces=True))
+            input_df["polysyllabcount"] = input_df["text"].apply(lambda x: textstat.polysyllabcount(x))
+            input_df["monosyllabcount"] = input_df["text"].apply(lambda x: textstat.monosyllabcount(x))
+
             # lexical_entropy, lexical_diversity
             # tqdm.pandas(desc='lexical characteristics preparation')
             input_df['lexical_entropy'], input_df['lexical_diversity'] = zip(
@@ -573,16 +597,16 @@ class Preprocessor:
             # tqdm.pandas(desc="fixed_summary_text preparation")
             input_df["fixed_summary_text"] = input_df["text"].apply(self.speller)
 
-            input_df['gunning_fog_prompt'] = input_df['prompt_text'].apply(self.gunning_fog)
-            input_df['flesch_kincaid_grade_level_prompt'] = input_df['prompt_text'].apply(
-                self.flesch_kincaid_grade_level)
-            input_df['flesch_reading_ease_prompt'] = input_df['prompt_text'].apply(self.flesch_reading_ease_manual)
+            # input_df['gunning_fog_prompt'] = input_df['prompt_text'].apply(self.gunning_fog)
+            # input_df['flesch_kincaid_grade_level_prompt'] = input_df['prompt_text'].apply(
+            #     self.flesch_kincaid_grade_level)
+            # input_df['flesch_reading_ease_prompt'] = input_df['prompt_text'].apply(self.flesch_reading_ease_manual)
 
             # count misspelling
             # tqdm.pandas(desc="splling_err_num preparation")
             input_df["splling_err_num"] = input_df["text"].apply(self.spelling)
 
-            input_df['flesch_reading_ease'] = input_df['text'].apply(self.flesch_reading_ease_manual)
+            # input_df['flesch_reading_ease'] = input_df['text'].apply(self.flesch_reading_ease_manual)
             input_df['word_count'] = input_df['text'].apply(lambda x: len(x.split()))
             input_df['sentence_length'] = input_df['text'].apply(lambda x: len(x.split('.')))
             input_df['vocabulary_richness'] = input_df['text'].apply(lambda x: len(set(x.split())))
@@ -639,9 +663,9 @@ class Preprocessor:
             # Calculate sentiment scores for each row
             input_df['sentiment_scores'] = input_df['text'].apply(self.calculate_sentiment_scores)
 
-            input_df['gunning_fog'] = input_df['text'].apply(self.gunning_fog)
-            input_df['flesch_kincaid_grade_level'] = input_df['text'].apply(self.flesch_kincaid_grade_level)
-            input_df['count_difficult_words'] = input_df['text'].apply(self.count_difficult_words)
+            # input_df['gunning_fog'] = input_df['text'].apply(self.gunning_fog)
+            # input_df['flesch_kincaid_grade_level'] = input_df['text'].apply(self.flesch_kincaid_grade_level)
+            # input_df['count_difficult_words'] = input_df['text'].apply(self.count_difficult_words)
 
             # Convert sentiment_scores into individual columns
             sentiment_columns = pd.DataFrame(list(input_df['sentiment_scores']))
@@ -1083,3 +1107,46 @@ def preprocess_and_join(df1, df2, df1_title_col, df2_title_col, grade_col):
 
     return merged_df
 
+
+def textstat_application(test_mode) -> pd.DataFrame:
+    for i in range(CONFIG.num_folds):
+        print(f"\nPREPROCESSING THE FOLD {i}:")
+        if test_mode:
+            input_df = pd.read_feather(path=CONFIG.init_data_storage + f"/fold {i}.ftr")[:N_ROWS]
+        else:
+            input_df = pd.read_feather(path=CONFIG.init_data_storage + f"/fold {i}.ftr")
+
+        input_df["flesch_reading_ease"] = input_df["text"].apply(lambda x: textstat.flesch_reading_ease(x))
+        input_df["flesch_kincaid_grade"] = input_df["text"].apply(lambda x: textstat.flesch_kincaid_grade(x))
+        input_df["gunning_fog"] = input_df["text"].apply(lambda x: textstat.gunning_fog(x))
+        input_df["smog_index"] = input_df["text"].apply(lambda x: textstat.smog_index(x))
+        input_df["automated_readability_index"] = input_df["text"].apply(lambda x: textstat.automated_readability_index(x))
+        input_df["coleman_liau_index"] = input_df["text"].apply(lambda x: textstat.coleman_liau_index(x))
+        input_df["linsear_write_formula"] = input_df["text"].apply(lambda x: textstat.linsear_write_formula(x))
+        input_df["dale_chall_readability_score"] = input_df["text"].apply(lambda x: textstat.dale_chall_readability_score(x))
+        input_df["text_standard"] = input_df["text"].apply(lambda x: textstat.text_standard(x, float_output=False))
+        input_df["spache_readability"] = input_df["text"].apply(lambda x: textstat.spache_readability(x))
+        input_df["mcalpine_eflaw"] = input_df["text"].apply(lambda x: textstat.mcalpine_eflaw(x))
+        input_df["reading_time"] = input_df["text"].apply(lambda x: textstat.reading_time(x, ms_per_char=14.69))
+        input_df["syllable_count"] = input_df["text"].apply(lambda x: textstat.syllable_count(x))
+        input_df["lexicon_count"] = input_df["text"].apply(lambda x: textstat.lexicon_count(x, removepunct=True))
+        input_df["sentence_count"] = input_df["text"].apply(lambda x: textstat.sentence_count(x))
+        input_df["char_count"] = input_df["text"].apply(lambda x: textstat.char_count(x, ignore_spaces=True))
+        input_df["letter_count"] = input_df["text"].apply(lambda x: textstat.letter_count(x, ignore_spaces=True))
+        input_df["polysyllabcount"] = input_df["text"].apply(lambda x: textstat.polysyllabcount(x))
+        input_df["monosyllabcount"] = input_df["text"].apply(lambda x: textstat.monosyllabcount(x))
+
+        # embeddings preparation
+        input_df.rename(columns={"embeddings": "stringed_embeddings"}, inplace=True)
+        # tqdm.pandas(desc="embeddings transformation")
+        input_df["embeddings"] = input_df["stringed_embeddings"].apply(lambda x: ast.literal_eval(x))
+        embeddings_length = len(input_df["embeddings"][0])
+        embedding_columns = pd.DataFrame(input_df['embeddings'].to_list(),
+                                         columns=[f"emb_{i}" for i in range(embeddings_length)])
+        input_df = pd.concat([input_df, embedding_columns], axis=1)
+
+        input_df = input_df.drop(columns=["summary_tokens", "prompt_tokens", "stringed_embeddings",
+                                          "vader_sentiment_scores", "pos_ratios", "punctuation_ratios",
+                                          "sentiment_scores", "sentiment_scores_prompt"])
+        # Store to feather
+        input_df.to_feather(CONFIG.storage + "/" + CONFIG.version + f"/preprocessed fold {i}.ftr")
