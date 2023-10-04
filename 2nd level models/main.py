@@ -1,13 +1,13 @@
 import warnings
 
+import argparse
 import pandas as pd
 
 import optuna_search_lgbm
 import optuna_search_svr
+import optuna_search_ridge
 from config import CONFIG
 from feature_generation.data_processing_unit import group_folds_in_a_single_df, remove_highly_collinear_variables
-
-MODEL_TYPE = "SVR"  # ["GBM", "SVR", "RIDGE"]
 
 
 def gbm_study(data: pd.DataFrame) -> None:
@@ -33,15 +33,20 @@ def ridge_study(data: pd.DataFrame) -> None:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("model", type=str,
+                        help="model selection")
+    arguments = parser.parse_args()
+
     all_folds_df = remove_highly_collinear_variables(group_folds_in_a_single_df(CONFIG.storage, CONFIG.num_folds),
                                                      collinearity_threshold=0.95)
 
     # study
-    if MODEL_TYPE == "GBM":
+    if arguments.model == "GBM":
         gbm_study(all_folds_df)
-    elif MODEL_TYPE == "SVR":
+    elif arguments.model == "SVR":
         svr_study(all_folds_df)
-    elif MODEL_TYPE == "RIDGE":
+    elif arguments.model == "RIDGE":
         ridge_study(all_folds_df)
     else:
         raise KeyError("Chosen type of model is incorrect")

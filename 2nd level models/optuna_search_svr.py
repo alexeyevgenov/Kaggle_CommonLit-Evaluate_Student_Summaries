@@ -49,7 +49,7 @@ class Study:
     def _objective(self, trial):
         CONFIG.svr.C = trial.suggest_float('C', 0.01, 1000)
         CONFIG.svr.epsilon = trial.suggest_float('epsilon', 0.01, 0.1)
-        CONFIG.svr.gamma = trial.suggest_float('gamma', 0.001, 10)
+        # CONFIG.svr.gamma = trial.suggest_float('gamma', 0.001, 10)
 
         rmses = []
         for fold in range(CONFIG.num_folds):
@@ -71,7 +71,7 @@ class Study:
     def train_best_model(self) -> None:
         CONFIG.svr.C = self.study.best_params["C"]
         CONFIG.svr.epsilon = self.study.best_params["epsilon"]
-        CONFIG.svr.gamma = self.study.best_params["gamma"]
+        # CONFIG.svr.gamma = self.study.best_params["gamma"]
 
         rmses = []
         models = {}
