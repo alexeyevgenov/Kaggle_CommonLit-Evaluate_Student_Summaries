@@ -1,6 +1,6 @@
 from box import Box
 
-CONFIG = {"storage": "../feature_generation/results/2",
+CONFIG = {"storage": "../feature_generation/results/3",
           "version": "3",
           "n_trials": 100,
           'models_dir': 'models',

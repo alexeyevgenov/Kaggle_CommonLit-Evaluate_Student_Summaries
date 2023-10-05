@@ -9,7 +9,6 @@ from nltk.corpus import stopwords
 from nltk import sent_tokenize, pos_tag
 from nltk.tokenize import word_tokenize
 from nltk.probability import FreqDist
-from pandas import DataFrame
 from scipy.stats import entropy as scipy_entropy
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -20,18 +19,17 @@ from spellchecker import SpellChecker
 import ast
 from tqdm import tqdm
 from config import CONFIG
-from multiprocessing import Queue
-import multiprocessing
 import textstat
+import Levenshtein
 
 tqdm.pandas()
 
 
 N_ROWS = 50
-features_for_norm = ["summary_length", "splling_err_num", "word_overlap_count", "bigram_overlap_count",
+features_for_norm = ["summary_length", "spelling_err_num", "word_overlap_count", "bigram_overlap_count",
                      "trigram_overlap_count", "quotes_count"]
-drop_columns = ["prompt_length", "prompt_id", "prompt_question", "prompt_title", "prompt_text", "student_id", "text",
-                "full_text", "fixed_summary_text", "embeddings", "fold"]
+drop_columns = ["prompt_id", "prompt_question", "prompt_title", "prompt_text", "student_id", "text", "full_text",
+                "embeddings", "fold"]
 
 
 # nltk.download('stopwords')  # todo: must to be downloaded
@@ -145,7 +143,7 @@ class Preprocessor:
         self.speller.nlp_data.update({token: 1000 for token in tokens})
 
     @staticmethod
-    def calculate_pos_ratios(self, text):
+    def calculate_pos_ratios(text):
         pos_tags = pos_tag(word_tokenize(text))
         pos_counts = Counter(tag for word, tag in pos_tags)
         total_words = len(pos_tags)
@@ -153,7 +151,7 @@ class Preprocessor:
         return ratios
 
     @staticmethod
-    def calculate_punctuation_ratios(self, text):
+    def calculate_punctuation_ratios(text):
         total_chars = len(text)
         punctuation_counts = Counter(char for char in text if char in '.,!?;:"()[]{}')
         ratios = {char: count / total_chars for char, count in punctuation_counts.items()}
@@ -172,15 +170,11 @@ class Preprocessor:
         sentiment_scores = sid.polarity_scores(text)
         return sentiment_scores
 
-    # def count_difficult_words(self, text, syllable_threshold=3):
-    #     words = TextBlob(text).words
-    #     difficult_words_count = sum(1 for word in words if self.count_syllables(word) >= syllable_threshold)
-    #     return difficult_words_count
-
     def run_modin(self) -> None:
         import modin.pandas as pd
         import ray
         ray.init(runtime_env={'env_vars': {'__MODIN_AUTOIMPORT_PANDAS__': '1'}})
+
         for i in range(CONFIG.num_folds):
             print(f"\nPREPROCESSING THE FOLD {i}:")
             if self.test_mode:
@@ -199,7 +193,7 @@ class Preprocessor:
             input_df["linsear_write_formula"] = input_df["text"].apply(lambda x: textstat.linsear_write_formula(x))
             input_df["dale_chall_readability_score"] = input_df["text"].apply(
                 lambda x: textstat.dale_chall_readability_score(x))
-            input_df["text_standard"] = input_df["text"].apply(lambda x: textstat.text_standard(x, float_output=False))
+            input_df["text_standard"] = input_df["text"].apply(lambda x: textstat.text_standard(x, float_output=True))
             input_df["spache_readability"] = input_df["text"].apply(lambda x: textstat.spache_readability(x))
             input_df["mcalpine_eflaw"] = input_df["text"].apply(lambda x: textstat.mcalpine_eflaw(x))
             input_df["reading_time"] = input_df["text"].apply(lambda x: textstat.reading_time(x, ms_per_char=14.69))
@@ -211,8 +205,13 @@ class Preprocessor:
             input_df["polysyllabcount"] = input_df["text"].apply(lambda x: textstat.polysyllabcount(x))
             input_df["monosyllabcount"] = input_df["text"].apply(lambda x: textstat.monosyllabcount(x))
 
+            # Levenshtein distance
+            input_df['levenshtein_text_to_promt'] = input_df.apply(
+                lambda x: Levenshtein.distance(x['prompt_text'], x['text']), axis=1)
+            input_df['levenshtein_text_to_promt_norm'] = input_df.apply(
+                lambda x: x['levenshtein_text_to_promt'] / len(x['prompt_text']), axis=1)
+
             # lexical_entropy, lexical_diversity
-            # tqdm.pandas(desc='lexical characteristics preparation')
             input_df['lexical_entropy'], input_df['lexical_diversity'] = zip(
                 *input_df['text'].apply(self.calculate_lexical_characteristics))
 
@@ -226,44 +225,27 @@ class Preprocessor:
             input_df['word_length_in_symbols'] = input_df['text_len_symbols'] / input_df['text_len_words']
 
             # Sentiment analysis
-            #tqdm.pandas(desc="sentiment analysis preparation")
-            input_df['vader_sentiment_scores'] = input_df['text'].apply(self.calculate_sentiment_vader)
-            input_df['vader_sentiment_positive'] = input_df['vader_sentiment_scores'].apply(lambda x: x['pos'])
-            input_df['vader_sentiment_negative'] = input_df['vader_sentiment_scores'].apply(lambda x: x['neg'])
-            input_df['vader_sentiment_neutral'] = input_df['vader_sentiment_scores'].apply(lambda x: x['neu'])
-            input_df['vader_sentiment_compound'] = input_df['vader_sentiment_scores'].apply(lambda x: x['compound'])
+            # input_df['vader_sentiment_scores'] = input_df['text'].apply(self.calculate_sentiment_vader)
+            # input_df['vader_sentiment_positive'] = input_df['vader_sentiment_scores'].apply(lambda x: x['pos'])
+            # input_df['vader_sentiment_negative'] = input_df['vader_sentiment_scores'].apply(lambda x: x['neg'])
+            # input_df['vader_sentiment_neutral'] = input_df['vader_sentiment_scores'].apply(lambda x: x['neu'])
+            # input_df['vader_sentiment_compound'] = input_df['vader_sentiment_scores'].apply(lambda x: x['compound'])
 
-            # check the level of subjectivity and polarity
-            # input_df['textblob_sentiment_scores'] = input_df['text'].progress_apply(self.sentiment_analysis)
-            # input_df['textblob_polarity'] = input_df['textblob_sentiment_scores'].apply(lambda x: x.polarity)
-            # input_df['textblob_subjectivity'] = input_df['textblob_sentiment_scores'].apply(lambda x: x.subjectivity)
-
-            # tqdm.pandas(desc="prompt_length preparation")
             input_df["prompt_length"] = input_df["prompt_text"].apply(lambda x: len(word_tokenize(x)))
             input_df["prompt_tokens"] = input_df["prompt_text"].apply(word_tokenize)
 
-            # tqdm.pandas(desc="summary_length preparation")
             input_df["summary_length"] = input_df["text"].apply(lambda x: len(word_tokenize(x)))
             input_df["summary_tokens"] = input_df["text"].apply(word_tokenize)
 
             # Add prompt tokens into spelling checker dictionary
-            # tqdm.pandas(desc="prompt_tokens preparation")
             input_df["prompt_tokens"].apply(self.add_spelling_dictionary)
 
             # fix misspelling
-            # tqdm.pandas(desc="fixed_summary_text preparation")
-            input_df["fixed_summary_text"] = input_df["text"].apply(self.speller)
-
-            # input_df['gunning_fog_prompt'] = input_df['prompt_text'].apply(self.gunning_fog)
-            # input_df['flesch_kincaid_grade_level_prompt'] = input_df['prompt_text'].apply(
-            #     self.flesch_kincaid_grade_level)
-            # input_df['flesch_reading_ease_prompt'] = input_df['prompt_text'].apply(self.flesch_reading_ease_manual)
+            # input_df["fixed_summary_text"] = input_df["text"].apply(self.speller)
 
             # count misspelling
-            # tqdm.pandas(desc="splling_err_num preparation")
-            input_df["splling_err_num"] = input_df["text"].apply(self.spelling)
+            input_df["spelling_err_num"] = input_df["text"].apply(self.spelling)
 
-            # input_df['flesch_reading_ease'] = input_df['text'].apply(self.flesch_reading_ease_manual)
             input_df['word_count'] = input_df['text'].apply(lambda x: len(x.split()))
             input_df['sentence_length'] = input_df['text'].apply(lambda x: len(x.split('.')))
             input_df['vocabulary_richness'] = input_df['text'].apply(lambda x: len(set(x.split())))
@@ -278,21 +260,16 @@ class Preprocessor:
             input_df['semicolon_count'] = input_df['text'].apply(lambda x: x.count(';'))
 
             # after merge preprocess
-            # tqdm.pandas(desc='length_ratio preparation')
             input_df['length_ratio'] = input_df['summary_length'] / input_df['prompt_length']
 
-            # tqdm.pandas(desc='word_overlap_count preparation')
             input_df['word_overlap_count'] = input_df.apply(self.word_overlap_count, axis=1)
 
-            # tqdm.pandas(desc='bigram_overlap_count preparation')
             input_df['bigram_overlap_count'] = input_df.apply(self.ngram_co_occurrence, args=(2,), axis=1)
             input_df['bigram_overlap_ratio'] = input_df['bigram_overlap_count'] / (input_df['summary_length'] - 1)
 
-            # tqdm.pandas(desc='trigram_overlap_count preparation')
             input_df['trigram_overlap_count'] = input_df.apply(self.ngram_co_occurrence, args=(3,), axis=1)
             input_df['trigram_overlap_ratio'] = input_df['trigram_overlap_count'] / (input_df['summary_length'] - 2)
 
-            # tqdm.pandas(desc='quotes_count preparation')
             input_df['quotes_count'] = input_df.apply(self.quotes_count, axis=1)
 
             input_df['question_count'] = input_df['text'].apply(lambda x: x.count('?'))
@@ -304,25 +281,22 @@ class Preprocessor:
 
             # Convert the dictionary of punctuation ratios into a single value (sum)
             input_df['punctuation_sum'] = input_df['punctuation_ratios'].apply(lambda x: np.sum(list(x.values())))
-            input_df['keyword_density'] = input_df.apply(self.calculate_keyword_density, axis=1)
-            input_df['jaccard_similarity'] = input_df.apply(
-                lambda row: len(set(word_tokenize(row['prompt_text'])) & set(word_tokenize(row['text']))) / len(
-                    set(word_tokenize(row['prompt_text'])) | set(word_tokenize(row['text']))), axis=1)
+            try:
+                input_df['keyword_density'] = input_df.apply(self.calculate_keyword_density, axis=1)
+                input_df['jaccard_similarity'] = input_df.apply(
+                    lambda row: len(set(word_tokenize(row['prompt_text'])) & set(word_tokenize(row['text']))) / len(
+                        set(word_tokenize(row['prompt_text'])) | set(word_tokenize(row['text']))), axis=1)
+            except Exception as ex:
+                print(ex)
 
-            # tqdm.pandas(desc="performing sentiment analysis")
             analysis_sentiment = input_df['text'].apply(lambda x: pd.Series(self.sentiment_analysis_modin(x)))
             input_df['sentiment_polarity'] = analysis_sentiment.apply(lambda x: x[0])
             input_df['sentiment_subjectivity'] = analysis_sentiment.apply(lambda x: x[1])
 
-            # tqdm.pandas(desc="calculating text similarity")
             input_df['text_similarity'] = input_df.apply(self.calculate_text_similarity, axis=1)
 
             # Calculate sentiment scores for each row
             input_df['sentiment_scores'] = input_df['text'].apply(self.calculate_sentiment_scores)
-
-            # input_df['gunning_fog'] = input_df['text'].apply(self.gunning_fog)
-            # input_df['flesch_kincaid_grade_level'] = input_df['text'].apply(self.flesch_kincaid_grade_level)
-            # input_df['count_difficult_words'] = input_df['text'].apply(self.count_difficult_words)
 
             # Convert sentiment_scores into individual columns
             sentiment_columns = pd.DataFrame(list(input_df['sentiment_scores']))
@@ -334,12 +308,8 @@ class Preprocessor:
             sentiment_columns_prompt.columns = [col + '_prompt' for col in sentiment_columns_prompt.columns]
             input_df = pd.concat([input_df, sentiment_columns_prompt], axis=1)
 
-            # input_df["count_unique_words"] = input_df["text"].progress_apply(
-            #     self.calculate_unique_words)
-
             # embeddings preparation
             input_df.rename(columns={"embeddings": "stringed_embeddings"}, inplace=True)
-            # tqdm.pandas(desc="embeddings transformation")
             input_df["embeddings"] = input_df["stringed_embeddings"].apply(lambda x: ast.literal_eval(x))
             embeddings_length = len(input_df["embeddings"][0])
             embedding_columns = pd.DataFrame(input_df['embeddings'].to_list(),
@@ -347,151 +317,11 @@ class Preprocessor:
             input_df = pd.concat([input_df, embedding_columns], axis=1)
 
             input_df = input_df.drop(columns=["summary_tokens", "prompt_tokens", "stringed_embeddings",
-                                              "vader_sentiment_scores", "pos_ratios", "punctuation_ratios",
-                                              "sentiment_scores", "sentiment_scores_prompt"])
+                                              "pos_ratios", "punctuation_ratios", "prompt_length",
+                                              "sentiment_scores", "sentiment_scores_prompt", "neg_prompt",
+                                              "neu_prompt", "pos_prompt", "compound_prompt"])
             # Store to feather
             input_df.to_feather(CONFIG.storage + "/" + CONFIG.version + f"/preprocessed fold {i}.ftr")
-
-    def run_pandas(self, input_df: pd.DataFrame, queue: Queue) -> DataFrame:   # , queue: Queue
-        print(multiprocessing.current_process())
-        # lexical_entropy, lexical_diversity
-        tqdm.pandas(desc='lexical characteristics preparation')
-        input_df['lexical_entropy'], input_df['lexical_diversity'] = zip(
-            *input_df['text'].progress_apply(self.calculate_lexical_characteristics))
-
-        # the length of a text
-        input_df['text_len_symbols'] = input_df['text'].apply(len)
-        input_df['text_len_words'] = input_df['text'].apply(lambda text: len(text.split()))
-        input_df['text_len_sentences'] = input_df['text'].apply(lambda text: len(sent_tokenize(text)))
-
-        # the length of words and sentences
-        input_df['sentence_length_in_words'] = input_df['text_len_words'] / input_df['text_len_sentences']
-        input_df['word_length_in_symbols'] = input_df['text_len_symbols'] / input_df['text_len_words']
-
-        # Sentiment analysis
-        tqdm.pandas(desc="sentiment analysis preparation")
-        input_df['vader_sentiment_scores'] = input_df['text'].progress_apply(self.calculate_sentiment_vader)
-        input_df['vader_sentiment_positive'] = input_df['vader_sentiment_scores'].apply(lambda x: x['pos'])
-        input_df['vader_sentiment_negative'] = input_df['vader_sentiment_scores'].apply(lambda x: x['neg'])
-        input_df['vader_sentiment_neutral'] = input_df['vader_sentiment_scores'].apply(lambda x: x['neu'])
-        input_df['vader_sentiment_compound'] = input_df['vader_sentiment_scores'].apply(lambda x: x['compound'])
-
-        # check the level of subjectivity and polarity
-        # input_df['textblob_sentiment_scores'] = input_df['text'].progress_apply(self.sentiment_analysis)
-        # input_df['textblob_polarity'] = input_df['textblob_sentiment_scores'].apply(lambda x: x.polarity)
-        # input_df['textblob_subjectivity'] = input_df['textblob_sentiment_scores'].apply(lambda x: x.subjectivity)
-
-        # tqdm.pandas(desc="prompt_length preparation")
-        input_df["prompt_length"] = input_df["prompt_text"].apply(lambda x: len(word_tokenize(x)))
-        input_df["prompt_tokens"] = input_df["prompt_text"].apply(word_tokenize)
-
-        # tqdm.pandas(desc="summary_length preparation")
-        input_df["summary_length"] = input_df["text"].apply(lambda x: len(word_tokenize(x)))
-        input_df["summary_tokens"] = input_df["text"].apply(word_tokenize)
-
-        # Add prompt tokens into spelling checker dictionary
-        tqdm.pandas(desc="prompt_tokens preparation")
-        input_df["prompt_tokens"].progress_apply(self.add_spelling_dictionary)
-
-        # fix misspelling
-        tqdm.pandas(desc="fixed_summary_text preparation")
-        input_df["fixed_summary_text"] = input_df["text"].progress_apply(self.speller)
-
-        input_df['gunning_fog_prompt'] = input_df['prompt_text'].apply(self.gunning_fog)
-        input_df['flesch_kincaid_grade_level_prompt'] = input_df['prompt_text'].apply(
-            self.flesch_kincaid_grade_level)
-        input_df['flesch_reading_ease_prompt'] = input_df['prompt_text'].apply(self.flesch_reading_ease_manual)
-
-        # count misspelling
-        tqdm.pandas(desc="splling_err_num preparation")
-        input_df["splling_err_num"] = input_df["text"].progress_apply(self.spelling)
-
-        input_df['flesch_reading_ease'] = input_df['text'].apply(self.flesch_reading_ease_manual)
-        input_df['word_count'] = input_df['text'].apply(lambda x: len(x.split()))
-        input_df['sentence_length'] = input_df['text'].apply(lambda x: len(x.split('.')))
-        input_df['vocabulary_richness'] = input_df['text'].apply(lambda x: len(set(x.split())))
-
-        input_df['word_count2'] = [len(t.split(' ')) for t in input_df.text]
-        input_df['num_unq_words'] = [len(list(set(x.lower().split(' ')))) for x in input_df.text]
-        input_df['num_chars'] = [len(x) for x in input_df.text]
-
-        # Additional features
-        input_df['avg_word_length'] = input_df['text'].apply(lambda x: np.mean([len(word) for word in x.split()]))
-        input_df['comma_count'] = input_df['text'].apply(lambda x: x.count(','))
-        input_df['semicolon_count'] = input_df['text'].apply(lambda x: x.count(';'))
-
-        # after merge preprocess
-        # tqdm.pandas(desc='length_ratio preparation')
-        input_df['length_ratio'] = input_df['summary_length'] / input_df['prompt_length']
-
-        tqdm.pandas(desc='word_overlap_count preparation')
-        input_df['word_overlap_count'] = input_df.progress_apply(self.word_overlap_count, axis=1)
-
-        tqdm.pandas(desc='bigram_overlap_count preparation')
-        input_df['bigram_overlap_count'] = input_df.progress_apply(self.ngram_co_occurrence, args=(2,), axis=1)
-        input_df['bigram_overlap_ratio'] = input_df['bigram_overlap_count'] / (input_df['summary_length'] - 1)
-
-        tqdm.pandas(desc='trigram_overlap_count preparation')
-        input_df['trigram_overlap_count'] = input_df.progress_apply(self.ngram_co_occurrence, args=(3,), axis=1)
-        input_df['trigram_overlap_ratio'] = input_df['trigram_overlap_count'] / (input_df['summary_length'] - 2)
-
-        tqdm.pandas(desc='quotes_count preparation')
-        input_df['quotes_count'] = input_df.progress_apply(self.quotes_count, axis=1)
-
-        input_df['question_count'] = input_df['text'].apply(lambda x: x.count('?'))
-        input_df['pos_ratios'] = input_df['text'].apply(self.calculate_pos_ratios)
-
-        # Convert the dictionary of POS ratios into a single value (mean)
-        input_df['pos_mean'] = input_df['pos_ratios'].apply(lambda x: np.mean(list(x.values())))
-        input_df['punctuation_ratios'] = input_df['text'].apply(self.calculate_punctuation_ratios)
-
-        # Convert the dictionary of punctuation ratios into a single value (sum)
-        input_df['punctuation_sum'] = input_df['punctuation_ratios'].apply(lambda x: np.sum(list(x.values())))
-        input_df['keyword_density'] = input_df.apply(self.calculate_keyword_density, axis=1)
-        input_df['jaccard_similarity'] = input_df.apply(
-            lambda row: len(set(word_tokenize(row['prompt_text'])) & set(word_tokenize(row['text']))) / len(
-                set(word_tokenize(row['prompt_text'])) | set(word_tokenize(row['text']))), axis=1)
-
-        tqdm.pandas(desc="performing sentiment analysis")
-        input_df[['sentiment_polarity', 'sentiment_subjectivity']] = input_df['text'].progress_apply(
-            lambda x: pd.Series(self.sentiment_analysis(x)))
-
-        tqdm.pandas(desc="calculating text similarity")
-        input_df['text_similarity'] = input_df.progress_apply(self.calculate_text_similarity, axis=1)
-
-        # Calculate sentiment scores for each row
-        input_df['sentiment_scores'] = input_df['text'].apply(self.calculate_sentiment_scores)
-
-        input_df['gunning_fog'] = input_df['text'].apply(self.gunning_fog)
-        input_df['flesch_kincaid_grade_level'] = input_df['text'].apply(self.flesch_kincaid_grade_level)
-        input_df['count_difficult_words'] = input_df['text'].apply(self.count_difficult_words)
-
-        # Convert sentiment_scores into individual columns
-        sentiment_columns = pd.DataFrame(list(input_df['sentiment_scores']))
-        input_df = pd.concat([input_df, sentiment_columns], axis=1)
-        input_df['sentiment_scores_prompt'] = input_df['prompt_text'].apply(self.calculate_sentiment_scores)
-
-        # Convert sentiment_scores_prompt into individual columns
-        sentiment_columns_prompt = pd.DataFrame(list(input_df['sentiment_scores_prompt']))
-        sentiment_columns_prompt.columns = [col + '_prompt' for col in sentiment_columns_prompt.columns]
-        input_df = pd.concat([input_df, sentiment_columns_prompt], axis=1)
-
-        # input_df["count_unique_words"] = input_df["text"].progress_apply(
-        #     self.calculate_unique_words)
-
-        # embeddings preparation
-        input_df.rename(columns={"embeddings": "stringed_embeddings"}, inplace=True)
-        tqdm.pandas(desc="embeddings transformation")
-        input_df["embeddings"] = input_df["stringed_embeddings"].progress_apply(lambda x: ast.literal_eval(x))
-        embeddings_length = len(input_df["embeddings"][0])
-        embedding_columns = pd.DataFrame(input_df['embeddings'].to_list(),
-                                         columns=[f"emb_{i}" for i in range(embeddings_length)])
-        input_df = pd.concat([input_df, embedding_columns], axis=1)
-
-        input_df = input_df.drop(columns=["summary_tokens", "prompt_tokens", "stringed_embeddings",
-                                          "vader_sentiment_scores", "pos_ratios", "punctuation_ratios",
-                                          "sentiment_scores", "sentiment_scores_prompt"])
-        queue.put(input_df)
 
 
 def group_folds_in_a_single_df(path: str, num_folds: int) -> pd.DataFrame:
@@ -522,8 +352,6 @@ def split_data_on_train_test(data: pd.DataFrame, fold_nummer: int, target_name: 
 
 def normalize_data(train_df: pd.DataFrame, test_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, StandardScaler]:
     scaler = StandardScaler()
-    # train_df[features_for_norm] = scaler.fit_transform(train_df[features_for_norm])
-    # test_df[features_for_norm] = scaler.transform(test_df[features_for_norm])
     train_df[train_df.columns] = scaler.fit_transform(train_df)
     test_df[test_df.columns] = scaler.transform(test_df)
     return train_df, test_df, scaler
