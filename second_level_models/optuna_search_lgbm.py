@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.metrics import mean_squared_error
 from config import CONFIG
 import lightgbm as lgb
-from feature_generation.data_processing_unit import normalize_data, split_data_on_train_test
+from utils.data_processing import normalize_data, split_data_on_train_test
 import pickle as pkl
 import pandas as pd
 

@@ -17,19 +17,16 @@ from textblob import TextBlob
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from spellchecker import SpellChecker
 import ast
-from tqdm import tqdm
-from config import CONFIG
+from feature_generation.config import CONFIG
 import textstat
 import Levenshtein
-
-tqdm.pandas()
 
 
 N_ROWS = 50
 features_for_norm = ["summary_length", "spelling_err_num", "word_overlap_count", "bigram_overlap_count",
                      "trigram_overlap_count", "quotes_count"]
 drop_columns = ["prompt_id", "prompt_question", "prompt_title", "prompt_text", "student_id", "text", "full_text",
-                "embeddings", "fold"]
+                "embeddings"]
 
 
 # nltk.download('stopwords')  # todo: must to be downloaded
@@ -45,7 +42,7 @@ class Preprocessor:
         self.spacy_ner_model = spacy.load('en_core_web_sm')
         self.speller = Speller(lang='en')
         self.spellchecker = SpellChecker()
-        self.scaler = StandardScaler()
+        # self.scaler = StandardScaler()
 
     @staticmethod
     def calculate_text_similarity(row):
@@ -177,10 +174,10 @@ class Preprocessor:
 
         for i in range(CONFIG.num_folds):
             print(f"\nPREPROCESSING THE FOLD {i}:")
+
+            input_df = pd.read_feather(path=CONFIG.init_data_storage + f"/fold {i}.ftr")
             if self.test_mode:
-                input_df = pd.read_feather(path=CONFIG.init_data_storage + f"/fold {i}.ftr")[:N_ROWS]
-            else:
-                input_df = pd.read_feather(path=CONFIG.init_data_storage + f"/fold {i}.ftr")
+                input_df = input_df[:N_ROWS]
 
             # feature generation with help of textstat library
             input_df["flesch_reading_ease"] = input_df["text"].apply(lambda x: textstat.flesch_reading_ease(x))
@@ -320,6 +317,7 @@ class Preprocessor:
                                               "pos_ratios", "punctuation_ratios", "prompt_length",
                                               "sentiment_scores", "sentiment_scores_prompt", "neg_prompt",
                                               "neu_prompt", "pos_prompt", "compound_prompt"])
+            input_df = input_df.drop(columns=drop_columns)
             # Store to feather
             input_df.to_feather(CONFIG.storage + "/" + CONFIG.version + f"/preprocessed fold {i}.ftr")
 
@@ -342,10 +340,10 @@ def group_folds_in_a_single_df(path: str, num_folds: int) -> pd.DataFrame:
 
 def split_data_on_train_test(data: pd.DataFrame, fold_nummer: int, target_name: str) -> (
         tuple)[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    x_train = data[data["fold"] != fold_nummer].drop(columns=drop_columns + CONFIG.data.targets)
+    x_train = data[data["fold"] != fold_nummer].drop(columns=["fold"] + CONFIG.data.targets)
     y_train = data[data["fold"] != fold_nummer][target_name]
 
-    x_test = data[data["fold"] == fold_nummer].drop(columns=drop_columns + CONFIG.data.targets)
+    x_test = data[data["fold"] == fold_nummer].drop(columns=["fold"] + CONFIG.data.targets)
     y_test = data[data["fold"] == fold_nummer][target_name]
     return x_train, x_test, y_train, y_test
 
@@ -361,7 +359,6 @@ def remove_highly_collinear_variables(df: pd.DataFrame, collinearity_threshold: 
     corr_matrix = df.corr(numeric_only=True).abs()
     upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
     to_drop = [column for column in upper.columns if any(upper[column] > collinearity_threshold)]
-    to_drop = [col for col in to_drop if col not in CONFIG.data.targets]
     print(f"There are defined {len(to_drop)} features with correlation greater than {collinearity_threshold}: {to_drop}"
           )
     df.drop(to_drop, axis=1, inplace=True)

@@ -1,4 +1,4 @@
-from data_processing_unit import Preprocessor
+from utils.data_processing import Preprocessor
 from config import CONFIG
 import time
 import os
@@ -11,6 +11,7 @@ if __name__ == "__main__":
     path = CONFIG.storage + "/" + CONFIG.version
     if not os.path.exists(path):
         os.makedirs(path)
+
     start = time.time()
 
     data_preprocessor = Preprocessor(test_mode=TEST_MODE)

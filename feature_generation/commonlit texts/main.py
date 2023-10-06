@@ -1,6 +1,6 @@
 import spacy
-from feature_generation.data_processing_unit import (classify_author, clean_lexile, encode_author_type,
-                                                     clean_grade, group_and_encode_genre)
+from utils.data_processing import (classify_author, clean_lexile, encode_author_type,
+                                   clean_grade, group_and_encode_genre)
 import pandas as pd
 
 
