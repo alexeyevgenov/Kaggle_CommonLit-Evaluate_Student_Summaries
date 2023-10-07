@@ -349,20 +349,33 @@ def split_data_on_train_test(data: pd.DataFrame, fold_nummer: int, target_name: 
 
 
 def normalize_data(train_df: pd.DataFrame, test_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, StandardScaler]:
+    emb_columns = [el for el in train_df.columns if "emb_" in el]
+    train_df_emb = train_df[emb_columns]
+    test_df_emb = test_df[emb_columns]
+    train_df = train_df.drop(columns=train_df_emb)
+    test_df = test_df.drop(columns=test_df_emb)
+
     scaler = StandardScaler()
     train_df[train_df.columns] = scaler.fit_transform(train_df)
     test_df[test_df.columns] = scaler.transform(test_df)
+
+    train_df = pd.concat([train_df, train_df_emb], axis=1)
+    test_df = pd.concat([test_df, test_df_emb], axis=1)
     return train_df, test_df, scaler
 
 
 def remove_highly_collinear_variables(df: pd.DataFrame, collinearity_threshold: float) -> pd.DataFrame:
-    corr_matrix = df.corr(numeric_only=True).abs()
+    df_copy = df.copy()
+    scaler = StandardScaler()
+    df_copy[df_copy.columns] = scaler.fit_transform(df_copy)
+    corr_matrix = df_copy.corr(numeric_only=True).abs()
     upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
     to_drop = [column for column in upper.columns if any(upper[column] > collinearity_threshold)]
     print(f"There are defined {len(to_drop)} features with correlation greater than {collinearity_threshold}: {to_drop}"
           )
-    df.drop(to_drop, axis=1, inplace=True)
-    return df
+    df_copy.drop(to_drop, axis=1, inplace=True)
+    good_columns = df_copy.columns
+    return df[good_columns]
 
 
 def clean_lexile(lexile):

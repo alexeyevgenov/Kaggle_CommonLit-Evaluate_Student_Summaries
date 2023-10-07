@@ -7,7 +7,7 @@ import optuna_search_lgbm
 import optuna_search_svr
 import optuna_search_ridge
 from config import CONFIG
-from utils.data_processing import group_folds_in_a_single_df, remove_highly_collinear_variables
+from utils.data_processing import group_folds_in_a_single_df, remove_highly_collinear_variables, drop_columns
 
 
 def gbm_study(data: pd.DataFrame) -> None:
@@ -39,10 +39,14 @@ if __name__ == "__main__":
     arguments = parser.parse_args()
 
     data = group_folds_in_a_single_df(CONFIG.storage, CONFIG.num_folds)
-    features = data.drop(columns=CONFIG.data.targets)
     targets = data[CONFIG.data.targets]
-    features = remove_highly_collinear_variables(features, collinearity_threshold=CONFIG.feat_coll_thresh)
-    data = pd.concat([features, targets], axis=1)
+    emb_columns = [el for el in data.columns if "emb_" in el]
+    embeddings = data[emb_columns]
+    fold_nums = data["fold"]
+    text_features = data.drop(columns=CONFIG.data.targets + emb_columns + drop_columns + ["fold"])
+
+    text_features = remove_highly_collinear_variables(text_features, collinearity_threshold=CONFIG.feat_coll_thresh)
+    data = pd.concat([text_features, embeddings, fold_nums, targets], axis=1)
 
     # study
     if arguments.model == "GBM":

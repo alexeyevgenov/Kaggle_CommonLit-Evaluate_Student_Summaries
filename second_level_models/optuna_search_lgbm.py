@@ -33,6 +33,8 @@ class Study:
         for fold in range(CONFIG.num_folds):
             X_train, X_eval, y_train, y_eval = split_data_on_train_test(self.data, fold, self.target)
             X_train, X_eval, scaler = normalize_data(X_train, X_eval)
+            # X_train = remove_highly_collinear_variables(X_train, collinearity_threshold=CONFIG.feat_coll_thresh)
+            # X_eval = X_eval[X_train.columns]
             df_by_folds[fold] = X_train, X_eval, y_train, y_eval
 
             # store scaler model
