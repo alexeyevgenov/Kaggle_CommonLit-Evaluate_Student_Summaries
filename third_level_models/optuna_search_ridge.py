@@ -1,15 +1,12 @@
 import os
 import optuna
 import numpy as np
-from sklearn.decomposition import PCA
 from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import Ridge
 from config import CONFIG
-from utils.data_processing import split_data_on_train_test
+from utils.data_processing import normalize_data, split_data_on_train_test
 import pickle as pkl
 import pandas as pd
-import wandb
-wandb.init(project="visualize-sklearn")
 
 # wandb.login(key="76ca0651b6bb46110bedfc5f63923880b9ee2507")
 
@@ -21,7 +18,6 @@ class Study:
         self.models = {}
         self.rmses = []
         self.path_for_models_storage = f"{CONFIG.models_dir}/{CONFIG.version}"
-        os.makedirs(self.path_for_models_storage, exist_ok=True)
 
         self.df_by_folds = self.prepare_data_for_study()
 
@@ -38,11 +34,15 @@ class Study:
         df_by_folds = {}
         for fold in range(CONFIG.num_folds):
             X_train, X_eval, y_train, y_eval = split_data_on_train_test(self.data, fold, self.target)
-            if CONFIG.pca_enabled:
-                reducer = PCA(n_components=CONFIG.pca.n_components)
-                X_train = reducer.fit_transform(X_train)
-                X_eval = reducer.transform(X_eval)
+            X_train, X_eval, scaler = normalize_data(X_train, X_eval)
             df_by_folds[fold] = X_train, X_eval, y_train, y_eval
+
+            # store scaler model
+            if self.target == CONFIG.data.targets[0]:
+                os.makedirs(self.path_for_models_storage, exist_ok=True)
+                pkl.dump(
+                    scaler, open(f"{self.path_for_models_storage}/scaler_{fold}.pkl", "wb"))
+
         return df_by_folds
 
     def _objective(self, trial):
