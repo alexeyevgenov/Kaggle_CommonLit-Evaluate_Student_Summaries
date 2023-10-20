@@ -1,3 +1,4 @@
+import os
 import re
 from collections import Counter
 from typing import List
@@ -20,13 +21,15 @@ import ast
 from feature_generation.config import CONFIG
 import textstat
 import Levenshtein
+import pickle as pkl
 
+np.random.seed(1)
 
 N_ROWS = 50
-features_for_norm = ["summary_length", "spelling_err_num", "word_overlap_count", "bigram_overlap_count",
-                     "trigram_overlap_count", "quotes_count"]
 drop_columns = ["prompt_id", "prompt_question", "prompt_title", "prompt_text", "student_id", "text", "full_text",
-                "embeddings"]
+                "embeddings", "summary_tokens", "prompt_tokens", "stringed_embeddings", "pos_ratios",
+                "punctuation_ratios", "prompt_length", "sentiment_scores", "sentiment_scores_prompt", "neg_prompt",
+                "neu_prompt", "pos_prompt", "compound_prompt"]
 
 
 # nltk.download('stopwords')  # todo: must to be downloaded
@@ -36,13 +39,17 @@ drop_columns = ["prompt_id", "prompt_question", "prompt_title", "prompt_text", "
 
 
 class Preprocessor:
-    def __init__(self, test_mode: bool) -> None:
+    def __init__(self, test_mode: bool, init_data_path: str, result_folder: str) -> None:
         self.test_mode = test_mode
         self.STOP_WORDS = set(stopwords.words('english'))
         self.spacy_ner_model = spacy.load('en_core_web_sm')
         self.speller = Speller(lang='en')
         self.spellchecker = SpellChecker()
-        # self.scaler = StandardScaler()
+        self.path_for_models_storage = f"{CONFIG.models_dir}/{CONFIG.version}"
+        self.init_data_path = init_data_path
+        self.result_folder = result_folder
+        os.makedirs(init_data_path, exist_ok=True)
+        os.makedirs(result_folder, exist_ok=True)
 
     @staticmethod
     def calculate_text_similarity(row):
@@ -52,7 +59,7 @@ class Preprocessor:
 
     @staticmethod
     def sentiment_analysis(text):
-        analysis = TextBlob(text)   # .sentiment
+        analysis = TextBlob(text)  # .sentiment
         return analysis.sentiment.polarity, analysis.sentiment.subjectivity
 
     @staticmethod
@@ -175,7 +182,7 @@ class Preprocessor:
         for i in range(CONFIG.num_folds):
             print(f"\nPREPROCESSING THE FOLD {i}:")
 
-            input_df = pd.read_feather(path=CONFIG.init_data_storage + f"/fold {i}.ftr")
+            input_df = pd.read_feather(path=self.init_data_path + f"/fold {i}.ftr")
             if self.test_mode:
                 input_df = input_df[:N_ROWS]
 
@@ -220,13 +227,6 @@ class Preprocessor:
             # the length of words and sentences
             input_df['sentence_length_in_words'] = input_df['text_len_words'] / input_df['text_len_sentences']
             input_df['word_length_in_symbols'] = input_df['text_len_symbols'] / input_df['text_len_words']
-
-            # Sentiment analysis
-            # input_df['vader_sentiment_scores'] = input_df['text'].apply(self.calculate_sentiment_vader)
-            # input_df['vader_sentiment_positive'] = input_df['vader_sentiment_scores'].apply(lambda x: x['pos'])
-            # input_df['vader_sentiment_negative'] = input_df['vader_sentiment_scores'].apply(lambda x: x['neg'])
-            # input_df['vader_sentiment_neutral'] = input_df['vader_sentiment_scores'].apply(lambda x: x['neu'])
-            # input_df['vader_sentiment_compound'] = input_df['vader_sentiment_scores'].apply(lambda x: x['compound'])
 
             input_df["prompt_length"] = input_df["prompt_text"].apply(lambda x: len(word_tokenize(x)))
             input_df["prompt_tokens"] = input_df["prompt_text"].apply(word_tokenize)
@@ -313,13 +313,24 @@ class Preprocessor:
                                              columns=[f"emb_{i}" for i in range(embeddings_length)])
             input_df = pd.concat([input_df, embedding_columns], axis=1)
 
-            input_df = input_df.drop(columns=["summary_tokens", "prompt_tokens", "stringed_embeddings",
-                                              "pos_ratios", "punctuation_ratios", "prompt_length",
-                                              "sentiment_scores", "sentiment_scores_prompt", "neg_prompt",
-                                              "neu_prompt", "pos_prompt", "compound_prompt"])
+            student_id = input_df["student_id"]
+
             input_df = input_df.drop(columns=drop_columns)
+
+            # Normalize data
+            scaler = StandardScaler()
+            input_df[input_df.columns] = scaler.fit_transform(input_df)
+
+            # remove collinear features
+            input_df = remove_highly_correlated_features(input_df, CONFIG.feat_coll_thresh)
+
+            input_df = pd.concat([input_df, student_id], axis=1)
+
+            # store scaler model
+            pkl.dump(scaler, open(self.result_folder + f"/scaler_{i}.pkl", "wb"))
+
             # Store to feather
-            input_df.to_feather(CONFIG.storage + "/" + CONFIG.version + f"/preprocessed fold {i}.ftr")
+            input_df.to_feather(self.result_folder + f"/preprocessed fold {i}.ftr")
 
 
 def group_folds_in_a_single_df(path: str, num_folds: int) -> pd.DataFrame:
@@ -376,6 +387,16 @@ def remove_highly_collinear_variables(df: pd.DataFrame, collinearity_threshold: 
     df_copy.drop(to_drop, axis=1, inplace=True)
     good_columns = df_copy.columns
     return df[good_columns]
+
+
+def remove_highly_correlated_features(df: pd.DataFrame, collinearity_threshold: float) -> pd.DataFrame:
+    corr_matrix = df.corr(numeric_only=True).abs()
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    to_drop = [column for column in upper.columns if any(upper[column] > collinearity_threshold)]
+    print(f"There are defined {len(to_drop)} features with correlation greater than {collinearity_threshold}: {to_drop}"
+          )
+    df.drop(to_drop, axis=1, inplace=True)
+    return df
 
 
 def clean_lexile(lexile):

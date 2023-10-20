@@ -82,6 +82,10 @@ class Study:
 
             models[fold] = model
 
+            wandb.sklearn.plot_regressor(model, X_train, X_eval, y_train, y_eval, model_name='Ridge')
+
+            wandb.finish()
+
         for ind in range(CONFIG.num_folds):
             pkl.dump(
                 models[ind], open(f"{self.path_for_models_storage}/ridge_model_{self.target}_{ind}.pkl", "wb")

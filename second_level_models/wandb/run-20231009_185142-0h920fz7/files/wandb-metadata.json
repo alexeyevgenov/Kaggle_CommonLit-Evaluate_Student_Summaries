@@ -1,0 +1,53 @@
+{
+    "os": "Windows-10-10.0.22621-SP0",
+    "python": "3.11.0",
+    "heartbeatAt": "2023-10-09T16:51:42.922941",
+    "startedAt": "2023-10-09T16:51:42.126779",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "C:\\Users\\Acer\\PycharmProjects\\Kaggle CommonLit - Evaluate Student Summaries\\second_level_models\\main.py",
+    "codePathLocal": "main.py",
+    "codePath": "second_level_models\\main.py",
+    "git": {
+        "remote": "https://github.com/alexeyevgenov/Kaggle_CommonLit-Evaluate_Student_Summaries.git",
+        "commit": "0dc672d7d4bc0480c5c1a139f450282812ae1d7b"
+    },
+    "email": "alexeyevgenov@gmail.com",
+    "root": "C:/Users/Acer/PycharmProjects/Kaggle CommonLit - Evaluate Student Summaries",
+    "host": "Aleksei-Asus-Laptop",
+    "username": "Acer",
+    "executable": "C:\\Users\\Acer\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+    "cpu_count": 6,
+    "cpu_count_logical": 12,
+    "cpu_freq": {
+        "current": 2630.0,
+        "min": 0.0,
+        "max": 3301.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 2630.0,
+            "min": 0.0,
+            "max": 3301.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 468.04101181030273,
+            "used": 256.5610809326172
+        }
+    },
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 3060 Laptop GPU",
+            "memory_total": 6442450944
+        }
+    ],
+    "memory": {
+        "total": 15.355525970458984
+    }
+}

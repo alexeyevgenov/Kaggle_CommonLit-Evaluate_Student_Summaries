@@ -1,0 +1,1 @@
+{"columns": ["metric_name", "metric_value", "model_name"], "data": [["mae", 0.32, "Ridge"], ["mse", 0.18, "Ridge"], ["r2_score", 0.81, "Ridge"]]}

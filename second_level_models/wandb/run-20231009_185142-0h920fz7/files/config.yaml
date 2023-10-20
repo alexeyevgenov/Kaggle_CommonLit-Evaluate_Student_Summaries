@@ -1,0 +1,56 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.11.0
+    cli_version: 0.15.11
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1696870302.135843
+    t:
+      1:
+      - 1
+      - 5
+      - 33
+      - 35
+      - 53
+      - 55
+      2:
+      - 1
+      - 5
+      - 33
+      - 35
+      - 53
+      - 55
+      3:
+      - 2
+      - 23
+      4: 3.11.0
+      5: 0.15.11
+      8:
+      - 3
+      - 5
+      13: windows-amd64
+    viz:
+      summary_metrics:
+        id: wandb/metrics/v1
+        historyFieldSettings:
+          x-axis: _step
+          key: summary_metrics
+      learning_curve:
+        id: wandb/learning_curve/v1
+        historyFieldSettings:
+          x-axis: _step
+          key: learning_curve
+      outlier_candidates:
+        id: wandb/outliers/v1
+        historyFieldSettings:
+          x-axis: _step
+          key: outlier_candidates
+      residuals:
+        id: wandb/residuals_plot/v1
+        historyFieldSettings:
+          x-axis: _step
+          key: residuals

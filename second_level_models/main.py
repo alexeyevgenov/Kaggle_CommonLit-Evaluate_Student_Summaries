@@ -1,5 +1,4 @@
 import pandas as pd
-
 import optuna_search_ridge
 from config import CONFIG
 from utils.data_processing import group_folds_in_a_single_df
